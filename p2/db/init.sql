@@ -1,3 +1,6 @@
+-- Esquema completo de la tienda (P2): el estado final de la especificación.
+-- Se ejecuta al iniciar el contenedor (compose) y en las pruebas con Testcontainers.
+
 CREATE TABLE catalogs (
     id          BIGINT AUTO_INCREMENT PRIMARY KEY,
     name        VARCHAR(80)  NOT NULL UNIQUE,
@@ -12,6 +15,41 @@ CREATE TABLE products (
     price       DECIMAL(8,2) NOT NULL,
     stock       INT          NOT NULL,
     FOREIGN KEY (catalog_id) REFERENCES catalogs (id)
+);
+
+CREATE TABLE users (
+    id            BIGINT AUTO_INCREMENT PRIMARY KEY,
+    name          VARCHAR(80)  NOT NULL,
+    email         VARCHAR(120) NOT NULL UNIQUE,
+    password_hash VARCHAR(80)  NOT NULL,
+    role          VARCHAR(20)  NOT NULL
+);
+
+CREATE TABLE refresh_tokens (
+    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    token_hash CHAR(64)  NOT NULL UNIQUE,
+    user_id    BIGINT    NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    revoked    BOOLEAN   NOT NULL DEFAULT FALSE,
+    FOREIGN KEY (user_id) REFERENCES users (id)
+);
+
+CREATE TABLE orders (
+    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id    BIGINT    NOT NULL,
+    state      VARCHAR(20) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users (id)
+);
+
+CREATE TABLE order_lines (
+    id         BIGINT AUTO_INCREMENT PRIMARY KEY,
+    order_id   BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    quantity   INT    NOT NULL,
+    unit_price DECIMAL(8,2) NOT NULL,
+    FOREIGN KEY (order_id) REFERENCES orders (id),
+    FOREIGN KEY (product_id) REFERENCES products (id)
 );
 
 INSERT INTO catalogs (name, description) VALUES

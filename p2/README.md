@@ -1,114 +1,169 @@
-# La tienda — P1 DWS (hito de partida)
+# La tienda — P2 DWS (implementación final)
 
-Práctica **P1** de *Desarrollo Web en Entorno Servidor* (2.º DAW): el punto de arranque
-de la aplicación de la tienda, construida como se sabía al terminar 1.º DAW —
-**Spring Boot 4**, **arquitectura por capas**, persistencia **JDBC** sobre **MariaDB**
-y **un único endpoint**: `GET /api/products`.
+Práctica **P2** de *Desarrollo Web en Entorno Servidor* (2.º DAW): la **implementación
+final** de la tienda, que condensa los hitos 04–09 sobre la base de la P1:
 
-Enunciado: <https://cesguiro.es/doku.php/clase/daw/dws/practicas/p1>
-(hito de partida, con detalle en la práctica 03 — *Partida: la tienda por capas*).
+- **Catálogos y productos**: CRUD completo (solo ADMIN) con lectura pública,
+  listado de productos **paginado** y corrección de errores 404/400/409.
+- **Pedidos**: creación con **reserva atómica de stock**, captura del precio de
+  cada línea en el momento de la reserva, cancelación que libera el stock
+  (una sola vez) y consulta de los pedidos propios.
+- **Usuarios y seguridad**: registro público (rol `USER` siempre), *login* con
+  **JWT** (access + refresh con rotación), roles `USER`/`ADMIN` y
+  **Spring Security** con reglas por rutas y método HTTP.
+- **Errores RFC 9457**: todos los fallos (incluidos 401/403 de seguridad) en
+  formato `application/problem+json`.
+- **Value Objects**: `Money` (> 0, dos decimales) y `Stock` (≥ 0) con
+  `AttributeConverter` para JPA.
+- **Pruebas de integración** contra **MariaDB real con Testcontainers**.
 
-## En qué consiste
+Enunciado: <https://cesguiro.es/doku.php/clase/daw/dws/practicas/p2>.
 
-Una API de catálogo mínima con un solo endpoint que devuelve el listado completo de
-productos de la semilla de la tienda (3 catálogos y 28 productos), cada uno con su
-`catalogId`. El resto de la API (catálogos, pedidos, usuarios…) no existe todavía:
-se construye en los hitos posteriores.
+## Stack
 
-## Organización del proyecto
+- **Java 25** y **Spring Boot 4.1** (starters `webmvc`, `data-jpa`, `security`,
+  `validation`), **Maven** (wrapper incluido).
+- **MariaDB 12** (misma imagen en Docker Compose y en Testcontainers).
+- **jjwt 0.13** para el access token HS256 y el refresh token (se guarda solo su
+  hash SHA-256, con rotación en cada refresh y en el logout).
+- **Hibernate 7** con `ddl-auto=none`: el esquema los gestiona `db/init.sql`.
 
-Árbol de paquetes (`es.cesguiro.shop`), con conciencia de arquitectura limpia:
-el **núcleo** (`domain`) no depende de nada externo; las capas externas
-(`controller`, `infrastructure`) dependen del núcleo, nunca al revés:
+## Estructura (arquitectura modular)
 
-```text
-src/main/java/es/cesguiro/shop
-├── ShopApplication.java          # clase de arranque de Spring Boot
-├── controller                    # capa externa (web)
-│   └── ProductController.java    # GET /api/products
-│   └── dto
-│       └── ProductDto.java       # DTO (record) + mapeo desde el modelo
-├── domain                        # NÚCLEO: modelo, servicio y PUERTO del repositorio
-│   ├── Product.java
-│   ├── ProductService.java       # interfaz de servicio (puerto de entrada)
-│   ├── ProductServiceImpl.java
-│   └── ProductRepository.java    # interfaz del repositorio: no menciona JDBC
-└── infrastructure                # ADAPTADORES de los puertos
-    └── persistence
-        ├── ProductRepositoryImpl.java
-        ├── ProductDao.java
-        ├── ProductDaoJdbc.java    # PreparedStatement + ResultSet → entidad
-        └── ProductEntity.java
+```
+src/main/java/es/cesguiro/shop/
+├── ShopApplication.java
+├── catalog/            # catálogos y productos
+│   ├── api/            # puerto público del módulo (CatalogApi) — lo usa orders
+│   ├── application/    # servicios (CatalogService, ProductService)
+│   ├── controller/     # REST + DTOs
+│   ├── domain/         # entidades (Catalog, Product) y excepciones
+│   └── infrastructure/persistence/  # repositorios Spring Data
+├── orders/             # pedidos (idéntica distribución)
+├── users/              # usuarios + auth + JWT + Spring Security
+└── shared/             # Money, Stock (value objects) y manejo de errores
 ```
 
-Reglas de dependencia que respeta el código:
-
-- `domain` es el núcleo: no menciona JDBC, ni DTOs, ni detalles de transporte.
-- `infrastructure` **implementa el puerto** `ProductRepository` definido en `domain`
-  (inversión de dependencias) y expone una entidad propia sobre un **DAO con JDBC**
-  (`PreparedStatement`), como en 1.º DAW; `ProductRepositoryImpl` traduce la entidad
-  al modelo `Product`.
-- `controller` habla solo el idioma de la web: devuelve **DTOs** (`ProductDto`,
-  un `record` con su factory `from(Product)`), nunca el modelo de dominio. Así el
-  contrato JSON no queda acoplado a las clases del núcleo.
-
-La relación de cada producto con su catálogo es, por ahora, solo el `catalogId`:
-la integridad la pone la clave ajena, no el código. El precio y el stock son números
-«sueltos»; las invariantes llegarán como value objects en hitos posteriores.
-
-## Requisitos
-
-- **JDK 25** (compilación y ejecución). El proyecto fija `<java.version>25</java.version>`.
-- **Docker + Compose** para la base de datos MariaDB.
-- Maven **no hace falta instalarlo**: el proyecto incluye el **Maven Wrapper**
-  (`mvnw` / `mvnw.cmd`).
-
-> **Nota sobre el puerto 3306:** el enunciado fija MariaDB en el puerto local `3306`,
-> pero en este equipo el servicio Windows `MySQL80` ya ocupa ese puerto. Por eso el
-> `compose.yaml` mapea el contenedor en el **`3307`** (`3307:3306`) y la URL de
-> conexión usa `localhost:3307`. Si un día ese MySQL se detiene, basta con cambiar
-> `3307:3306` por `3306:3306` en `compose.yaml` y restaurar el `3306` en
-> `application.properties`.
+La frontera entre módulos es explícita: `orders` no toca las entidades de
+`catalog`; sólo ve el puerto `CatalogApi` (`priceOf`, `reserve`, `release`),
+que implementa `catalog` con `UPDATE`s condicionales atómicos.
 
 ## Arranque
 
-1. Levantar la base de datos (crea las tablas y carga la semilla automáticamente):
+1. Levanta MariaDB (puerto **3307**, para no chocar con MySQL del sistema):
 
-   ```bash
+   ```
    docker compose up -d
    ```
 
-   Se crea la base `shop` con el usuario `shop` / contraseña `shop` (contraseñas de
-   entorno de pruebas definidas por el enunciado, no secretos personales).
-   La semilla (`db/init.sql`) deja **3 catálogos y 28 productos**.
+2. Ejecuta la aplicación (crea las tablas y siembra catálogos, productos y el
+   ADMIN al primer arranque):
 
-2. Arrancar la aplicación:
-
-   ```bash
-   ./mvnw spring-boot:run        # Linux/macOS
-   .\mvnw.cmd spring-boot:run    # Windows
+   ```
+   .\mvnw.cmd spring-boot:run
    ```
 
-3. Comprobar el endpoint:
+   o:
 
-   ```bash
-   curl http://localhost:8080/api/products
+   ```
+   & "C:\ruta\a\jdk-25\bin\java.exe" -jar target\shop-0.0.1-SNAPSHOT.jar
    ```
 
-   Devuelve el JSON de los 28 productos con su `id`, `catalogId`, `name`,
-   `description`, `price` y `stock`.
+### Configuración por variables de entorno
 
-## Compilación y pruebas
+Todos los valores sensibles tienen un *default* de desarrollo (`application.properties`);
+en producción se sobre escriben con variables de entorno:
 
-- Compilar: `./mvnw package` (o `.\mvnw.cmd package` en Windows).
-- Pruebas: en este hito las pruebas son **manuales** (curl contra el endpoint);
-  el primer criterio de pruebas automatizadas llega en el hito 05. Por eso no hay
-  tests automatizados todavía.
+| Variable | Uso | Default |
+|---|---|---|
+| `SHOP_ADMIN_EMAIL` / `SHOP_ADMIN_PASSWORD` | semilla del ADMIN | `admin@shop.local` / `admin-pass-123` |
+| `SHOP_JWT_SECRET` | firma HS256 de los access tokens | secreto de desarrollo (no usar en real) |
+| `SHOP_JWT_TTL_MINUTES` / `SHOP_REFRESH_TTL_DAYS` | vida de los tokens | `60` / `7` |
 
-## Comandos útiles
+## Datos iniciales
 
-```bash
-docker compose up -d     # levantar MariaDB
-docker compose down      # parar MariaDB
-docker compose down -v   # pararla y borrar el volumen de datos (vuelve a sembrar)
+- **3 catálogos** (Periféricos, Pantallas, Accesorios) y **28 productos**, por
+  `db/init.sql`.
+- **Usuario ADMIN** creado al arrancar (`admin@shop.local` / `admin-pass-123`
+  por defecto, si aún no existe).
+- **Usuarios USER**: se registran por `POST /api/users` (el rol lo fija el
+  servidor, siempre `USER`).
+
+## API (resumen con ejemplos)
+
+Todos los errores van en formato Problem RFC 9457 (`application/problem+json`).
+
+### Catálogo (lecturas públicas)
+
 ```
+GET /api/catalogs                       # lista de catálogos
+GET /api/catalogs/{id}                  # un catálogo (404 si no existe)
+GET /api/catalogs/{id}/products?page=0&size=5   # productos paginados
+GET /api/products/{id}                  # un producto (404 si no existe)
+```
+
+### Escrituras (solo ADMIN; sin token → 401, USER → 403)
+
+```
+POST   /api/catalogs        {"name": "...", "description": "..."}
+PUT    /api/catalogs/{id}   (mismo cuerpo)
+DELETE /api/catalogs/{id}   → 409 si el catálogo tiene productos
+
+POST   /api/products        {"catalogId": 1, "name": "...", "description": "...", "price": 9.99, "stock": 10}
+PUT    /api/products/{id}
+DELETE /api/products/{id}
+→ 409 si el nombre ya existe, 400 si el precio tiene > 2 decimales o el stock es negativo
+```
+
+### Registro, login y tokens
+
+```
+POST /api/users          {"name": "...", "email": "...", "password": "..."}  → 201 USER, 409 email duplicado
+POST /api/auth/login     {"email": "...", "password": "..."}  → 401 si falla → accessToken + refreshToken
+POST /api/auth/refresh   {"refreshToken": "..."}  → rota: el anterior queda revocado
+POST /api/auth/logout    {"refreshToken": "..."}  → lo revoca también
+```
+
+### Pedidos (autenticados; identidad sacada del token, nunca del cuerpo)
+
+```
+POST /api/orders         {"lines": [{"productId": 21, "quantity": 2}]}
+                         → 201; cada línea guarda su unitPrice; 409 si no hay stock
+GET  /api/orders/{id}    → 200 (dueño o ADMIN); 403 si es de otro; 404 si no existe
+POST /api/orders/{id}/cancel → 200; libera el stock; 409 si ya estaba cancelado
+GET  /api/me/orders      → los pedidos del usuario autenticado
+```
+
+Ejemplo completo con curl:
+
+```
+curl -H "Content-Type: application/json" \
+     -d '{"name":"Ana","email":"ana@shop.local","password":"secret-pass-1"}' \
+     http://localhost:8080/api/users
+
+curl -H "Content-Type: application/json" \
+     -d '{"email":"ana@shop.local","password":"secret-pass-1"}' \
+     http://localhost:8080/api/auth/login
+
+curl -H "Authorization: Bearer <accessToken>" -H "Content-Type: application/json" \
+     -d '{"lines":[{"productId":21,"quantity":2}]}' \
+     http://localhost:8080/api/orders
+```
+
+## Pruebas
+
+```
+$env:JAVA_HOME = "C:\ruta\a\jdk-25"
+.\mvnw.cmd test
+```
+
+Las pruebas de integración levantan un contenedor **MariaDB 12 real**
+(Testcontainers) con el mismo esquema y semilla que en producción:
+
+- `AuthApiTests` — registro, hash de contraseña, login, 401, rotación de refresh, logout.
+- `CatalogApiTests` — CRUD de catálogos/productos, 409 por duplicados y catálogo
+  no vacío, 400 de `Money`/`Stock`, 404, paginación y reglas ADMIN.
+- `OrderApiTests` — creación con captura de precios y reserva de stock,
+  rollback de todo si una reserva falla, cancelación con liberación,
+  propiedad de los pedidos y doble cancelación.
+- `ValueObjectsTests` — invariancias de `Money` y `Stock` (sin contenedor).

@@ -1,0 +1,300 @@
+openapi: 3.0.3
+info:
+  title: La tienda — API
+  description: |
+    API P2 DWS: catálogos y productos (lectura pública, escrituras ADMIN),
+    pedidos con reserva atómica de stock y usuarios/JWT.
+    Todos los errores siguen RFC 9457 (`application/problem+json`).
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+tags:
+  - name: Catalogs
+  - name: Products
+  - name: Orders
+  - name: Users & Auth
+paths:
+  /api/catalogs:
+    get:
+      tags: [Catalogs]
+      summary: Lista de catálogos (público)
+      responses:
+        "200": { $ref: "#/components/responses/CatalogList" }
+    post:
+      tags: [Catalogs]
+      summary: Crear catálogo (ADMIN)
+      requestBody: { $ref: "#/components/requestBodies/CatalogInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Catalog" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+  /api/catalogs/{id}:
+    get:
+      tags: [Catalogs]
+      summary: Un catálogo (público)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Catalog" }
+        "404": { $ref: "#/components/responses/Problem" }
+    put:
+      tags: [Catalogs]
+      summary: Renombrar catálogo (ADMIN)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { $ref: "#/components/requestBodies/CatalogInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Catalog" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+    delete:
+      tags: [Catalogs]
+      summary: Eliminar catálogo (ADMIN)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: "Eliminado" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { description: "El catálogo tiene productos", content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
+  /api/catalogs/{id}/products:
+    get:
+      tags: [Products]
+      summary: Productos paginados de un catálogo (público)
+      parameters:
+        - { $ref: "#/components/parameters/Id" }
+        - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, default: 10 } }
+      responses:
+        "200":
+          description: "Página de productos"
+          content: { application/json: { schema: { $ref: "#/components/schemas/ProductPage" } } }
+        "404": { $ref: "#/components/responses/Problem" }
+  /api/products/{id}:
+    get:
+      tags: [Products]
+      summary: Un producto (público)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Product" }
+        "404": { $ref: "#/components/responses/Problem" }
+    put:
+      tags: [Products]
+      summary: Actualizar producto (ADMIN)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      requestBody: { $ref: "#/components/requestBodies/ProductInput" }
+      responses:
+        "200": { $ref: "#/components/responses/Product" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { description: "Nombre duplicado", content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
+    delete:
+      tags: [Products]
+      summary: Eliminar producto (ADMIN)
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "204": { description: "Eliminado" }
+        "404": { $ref: "#/components/responses/Problem" }
+  /api/products:
+    post:
+      tags: [Products]
+      summary: Crear producto (ADMIN)
+      requestBody: { $ref: "#/components/requestBodies/ProductInput" }
+      responses:
+        "201": { $ref: "#/components/responses/Product" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { description: "Nombre duplicado", content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
+  /api/orders:
+    post:
+      tags: [Orders]
+      summary: Crear pedido con reserva atómica de stock (autenticado)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content: { application/json: { schema: { $ref: "#/components/schemas/OrderInput" } } }
+      responses:
+        "201":
+          description: "Pedido creado (precios capturados en la reserva)"
+          content: { application/json: { schema: { $ref: "#/components/schemas/Order" } } }
+        "401": { $ref: "#/components/responses/Problem" }
+        "409": { description: "Stock insuficiente (rollback completo)", content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
+  /api/orders/{id}:
+    get:
+      tags: [Orders]
+      summary: Un pedido (dueño o ADMIN)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: "Pedido", content: { application/json: { schema: { $ref: "#/components/schemas/Order" } } } }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+  /api/orders/{id}/cancel:
+    post:
+      tags: [Orders]
+      summary: Cancelar pedido y liberar stock (dueño o ADMIN)
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/Id" }]
+      responses:
+        "200": { description: "Pedido CANCELLED", content: { application/json: { schema: { $ref: "#/components/schemas/Order" } } } }
+        "409": { description: "Ya estaba cancelado", content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
+  /api/me/orders:
+    get:
+      tags: [Orders]
+      summary: Pedidos del usuario autenticado
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: "Lista de pedidos"
+          content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Order" } } } }
+        "401": { $ref: "#/components/responses/Problem" }
+  /api/users:
+    post:
+      tags: [Users & Auth]
+      summary: Registro público (rol USER siempre)
+      requestBody:
+        content: { application/json: { schema: { $ref: "#/components/schemas/RegisterInput" } } }
+      responses:
+        "201":
+          description: "Usuario creado"
+          content: { application/json: { schema: { $ref: "#/components/schemas/User" } } }
+        "400": { $ref: "#/components/responses/Problem" }
+        "409": { description: "Email duplicado", content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } } }
+  /api/auth/login:
+    post:
+      tags: [Users & Auth]
+      summary: Login → accessToken + refreshToken
+      requestBody:
+        content: { application/json: { schema: { $ref: "#/components/schemas/LoginInput" } } }
+      responses:
+        "200":
+          description: "Par de tokens"
+          content: { application/json: { schema: { $ref: "#/components/schemas/TokenPair" } } }
+        "401": { $ref: "#/components/responses/Problem" }
+  /api/auth/refresh:
+    post:
+      tags: [Users & Auth]
+      summary: Renovar accessToken (rotación: el refresh anterior se revoca)
+      requestBody:
+        content: { application/json: { schema: { type: object, required: [refreshToken], properties: { refreshToken: { type: string } } } } }
+      responses:
+        "200":
+          description: "Par de tokens nuevo"
+          content: { application/json: { schema: { $ref: "#/components/schemas/TokenPair" } } }
+        "401": { $ref: "#/components/responses/Problem" }
+  /api/auth/logout:
+    post:
+      tags: [Users & Auth]
+      summary: Logout (revoca el refresh)
+      requestBody:
+        content: { application/json: { schema: { type: object, required: [refreshToken], properties: { refreshToken: { type: string } } } } }
+      responses:
+        "204": { description: "Revocado" }
+        "401": { $ref: "#/components/responses/Problem" }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: integer, format: int64 } }
+  requestBodies:
+    CatalogInput:
+      content: { application/json: { schema: { $ref: "#/components/schemas/CatalogInput" } } }
+    ProductInput:
+      content: { application/json: { schema: { $ref: "#/components/schemas/ProductInput" } } }
+  responses:
+    Catalog:
+      description: "Catálogo"
+      content: { application/json: { schema: { $ref: "#/components/schemas/Catalog" } } }
+    CatalogList:
+      description: "Lista de catálogos"
+      content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/Catalog" } } } }
+    Product:
+      description: "Producto"
+      content: { application/json: { schema: { $ref: "#/components/schemas/Product" } } }
+    Problem:
+      description: "Error RFC 9457"
+      content: { application/problem+json: { schema: { $ref: "#/components/schemas/Problem" } } }
+  schemas:
+    Problem:
+      type: object
+      description: "Documento de problema RFC 9457"
+      properties:
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+    Catalog:
+      type: object
+      properties: { id: { type: integer }, name: { type: string }, description: { type: string } }
+    CatalogInput:
+      type: object
+      required: [name, description]
+      properties: { name: { type: string }, description: { type: string } }
+    Product:
+      type: object
+      properties:
+        id: { type: integer }
+        catalogId: { type: integer }
+        name: { type: string }
+        description: { type: string }
+        price: { type: number, format: double, example: 24.50 }
+        stock: { type: integer, minimum: 0 }
+    ProductInput:
+      type: object
+      required: [catalogId, name, description, price, stock]
+      properties:
+        catalogId: { type: integer }
+        name: { type: string }
+        description: { type: string }
+        price: { type: number, description: "> 0 y como mucho dos decimales" }
+        stock: { type: integer, minimum: 0 }
+    ProductPage:
+      type: object
+      properties:
+        content: { type: array, items: { $ref: "#/components/schemas/Product" } }
+        page: { type: integer }
+        size: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        totalPages: { type: integer }
+    OrderInput:
+      type: object
+      required: [lines]
+      properties:
+        lines:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required: [productId, quantity]
+            properties:
+              productId: { type: integer }
+              quantity: { type: integer, minimum: 1 }
+    Order:
+      type: object
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        state: { type: string, enum: [CREATED, CANCELLED] }
+        createdAt: { type: string, format: date-time }
+        lines:
+          type: array
+          items:
+            type: object
+            properties:
+              productId: { type: integer }
+              quantity: { type: integer }
+              unitPrice: { type: number, description: "Precio capturado al reservar" }
+        total: { type: number }
+    RegisterInput:
+      type: object
+      required: [name, email, password]
+      properties: { name: { type: string }, email: { type: string, format: email }, password: { type: string, minLength: 8 } }
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties: { email: { type: string, format: email }, password: { type: string } }
+    User:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        role: { type: string, enum: [USER, ADMIN] }
+    TokenPair:
+      type: object
+      properties: { accessToken: { type: string }, refreshToken: { type: string } }
