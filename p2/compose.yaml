@@ -10,3 +10,25 @@ services:
       - "3307:3306"
     volumes:
       - ./db:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # dentro de la red compose, MariaDB es el host "db"
+      SPRING_DATASOURCE_URL: jdbc:mariadb://db:3306/shop
+      SPRING_DATASOURCE_USERNAME: shop
+      SPRING_DATASOURCE_PASSWORD: shop
+      # secretos por variables de entorno: sin credenciales reales en el código
+      SHOP_ADMIN_EMAIL: admin@shop.local
+      SHOP_ADMIN_PASSWORD: admin-pass-123
+      SHOP_JWT_SECRET: local-dev-secret-change-me-0123456789abcdef
+    ports:
+      - "8080:8080"

@@ -69,6 +69,17 @@ que implementa `catalog` con `UPDATE`s condicionales atómicos.
    & "C:\ruta\a\jdk-25\bin\java.exe" -jar target\shop-0.0.1-SNAPSHOT.jar
    ```
 
+### Despliegue con Docker Compose (aplicación + base de datos)
+
+Con el jar compilado, `docker compose up -d --build` levanta **los dos servicios**:
+
+- `db` — MariaDB 12 con el esquema y la semilla de `db/init.sql`
+  (con healthcheck para que la app arranque cuando la BD esté lista).
+- `app` — imagen Java 25 construida con el `Dockerfile`, escuchando en
+  `http://localhost:8080`, con la BD privada en la red interna de compose.
+
+Sólo hace falta Docker: no hace falta MariaDB ni JDK instalados en el host.
+
 ### Configuración por variables de entorno
 
 Todos los valores sensibles tienen un *default* de desarrollo (`application.properties`);
