@@ -1,4 +1,4 @@
-package es.cesguiro.shop.persistence;
+package es.cesguiro.shop.infrastructure.persistence;
 
 import java.util.List;
 

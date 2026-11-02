@@ -17,29 +17,40 @@ se construye en los hitos posteriores.
 
 ## Organización del proyecto
 
-Árbol de paquetes (`es.cesguiro.shop`):
+Árbol de paquetes (`es.cesguiro.shop`), con conciencia de arquitectura limpia:
+el **núcleo** (`domain`) no depende de nada externo; las capas externas
+(`controller`, `infrastructure`) dependen del núcleo, nunca al revés:
 
 ```text
 src/main/java/es/cesguiro/shop
 ├── ShopApplication.java          # clase de arranque de Spring Boot
-├── controller
+├── controller                    # capa externa (web)
 │   └── ProductController.java    # GET /api/products
-├── domain                        # modelo, servicio y CONTRATO del repositorio
+│   └── dto
+│       └── ProductDto.java       # DTO (record) + mapeo desde el modelo
+├── domain                        # NÚCLEO: modelo, servicio y PUERTO del repositorio
 │   ├── Product.java
-│   ├── ProductService.java
+│   ├── ProductService.java       # interfaz de servicio (puerto de entrada)
 │   ├── ProductServiceImpl.java
-│   └── ProductRepository.java    # interfaz: no menciona JDBC
-└── persistence                   # IMPLEMENTACIÓN del repositorio
-    ├── ProductRepositoryImpl.java
-    ├── ProductDao.java
-    ├── ProductDaoJdbc.java       # PreparedStatement + ResultSet → entidad
-    └── ProductEntity.java
+│   └── ProductRepository.java    # interfaz del repositorio: no menciona JDBC
+└── infrastructure                # ADAPTADORES de los puertos
+    └── persistence
+        ├── ProductRepositoryImpl.java
+        ├── ProductDao.java
+        ├── ProductDaoJdbc.java    # PreparedStatement + ResultSet → entidad
+        └── ProductEntity.java
 ```
 
-La inversión de dependencias clave del hito: la **interfaz del repositorio vive en
-`domain`** (no menciona JDBC) y la **implementación vive en `persistence`**, sobre un
-**DAO con entidad** que consulta con `PreparedStatement` y mapea el `ResultSet`,
-como en 1.º DAW. `ProductRepositoryImpl` traduce la entidad al modelo `Product`.
+Reglas de dependencia que respeta el código:
+
+- `domain` es el núcleo: no menciona JDBC, ni DTOs, ni detalles de transporte.
+- `infrastructure` **implementa el puerto** `ProductRepository` definido en `domain`
+  (inversión de dependencias) y expone una entidad propia sobre un **DAO con JDBC**
+  (`PreparedStatement`), como en 1.º DAW; `ProductRepositoryImpl` traduce la entidad
+  al modelo `Product`.
+- `controller` habla solo el idioma de la web: devuelve **DTOs** (`ProductDto`,
+  un `record` con su factory `from(Product)`), nunca el modelo de dominio. Así el
+  contrato JSON no queda acoplado a las clases del núcleo.
 
 La relación de cada producto con su catálogo es, por ahora, solo el `catalogId`:
 la integridad la pone la clave ajena, no el código. El precio y el stock son números
