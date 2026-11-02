@@ -1,52 +1,103 @@
-# DWES
+# La tienda — P1 DWS (hito de partida)
 
-**Desarrollo Web en Entorno Servidor** — 2.º DAW (Desarrollo de Aplicaciones Web).
+Práctica **P1** de *Desarrollo Web en Entorno Servidor* (2.º DAW): el punto de arranque
+de la aplicación de la tienda, construida como se sabía al terminar 1.º DAW —
+**Spring Boot 4**, **arquitectura por capas**, persistencia **JDBC** sobre **MariaDB**
+y **un único endpoint**: `GET /api/products`.
 
-Asignatura del segundo curso del ciclo formativo de grado superior *Desarrollo de Aplicaciones Web* (DAW), centrada en la construcción de aplicaciones que se ejecutan en el servidor: arquitectura, desarrollo de APIs REST, persistencia, seguridad y organización del código.
+Enunciado: <https://cesguiro.es/doku.php/clase/daw/dws/practicas/p1>
+(hito de partida, con detalle en la práctica 03 — *Partida: la tienda por capas*).
 
 ## En qué consiste
 
-La asignatura trabaja sobre una **aplicación real y completa** (una *tienda* con catálogos, productos, pedidos y usuarios) que evoluciona hito a hito a lo largo del curso. Cada hito incorpora los conceptos nuevos al mismo proyecto, de modo que se ve la evolución del diseño: de un único endpoint «ingenuo» a una aplicación modular, validada, persistida con JPA y asegurada con Spring Security.
+Una API de catálogo mínima con un solo endpoint que devuelve el listado completo de
+productos de la semilla de la tienda (3 catálogos y 28 productos), cada uno con su
+`catalogId`. El resto de la API (catálogos, pedidos, usuarios…) no existe todavía:
+se construye en los hitos posteriores.
 
-## Tecnologías del curso
+## Organización del proyecto
 
-| Tecnología | Uso |
-| --- | --- |
-| **Java (JDK 25)** | Lenguaje de desarrollo |
-| **Spring Boot 4** | Framework del servidor |
-| **Maven** | Gestión del proyecto, plugins y generación de código |
-| **MariaDB (Docker + Compose)** | Base de datos y entorno |
-| **JDBC / JPA (Spring Data)** | Persistencia |
-| **OpenAPI / Swagger** | Diseño y documentación de contratos (API First) |
-| **Spring Security + JWT** | Autenticación y autorización |
-| **Testcontainers, ArchUnit, Spring Modulith** | Pruebas y organización modular |
+Árbol de paquetes (`es.cesguiro.shop`):
 
-## Contenido temático
+```text
+src/main/java/es/cesguiro/shop
+├── ShopApplication.java          # clase de arranque de Spring Boot
+├── controller
+│   └── ProductController.java    # GET /api/products
+├── domain                        # modelo, servicio y CONTRATO del repositorio
+│   ├── Product.java
+│   ├── ProductService.java
+│   ├── ProductServiceImpl.java
+│   └── ProductRepository.java    # interfaz: no menciona JDBC
+└── persistence                   # IMPLEMENTACIÓN del repositorio
+    ├── ProductRepositoryImpl.java
+    ├── ProductDao.java
+    ├── ProductDaoJdbc.java       # PreparedStatement + ResultSet → entidad
+    └── ProductEntity.java
+```
 
-1. Arquitecturas de software
-2. API First
-3. Validación e invariancias
-4. Monolito modular (módulos y Spring Modulith)
-5. Persistencia con Spring JPA
-6. Login con JWT
-7. Integración con Spring Security
-8. Eventos de aplicación y mensajería
-9. Logs e instrumentación
-10. Serverless: Lambdas en local
-11. Concurrencia: bloqueante, reactiva y Loom
+La inversión de dependencias clave del hito: la **interfaz del repositorio vive en
+`domain`** (no menciona JDBC) y la **implementación vive en `persistence`**, sobre un
+**DAO con entidad** que consulta con `PreparedStatement` y mapea el `ResultSet`,
+como en 1.º DAW. `ProductRepositoryImpl` traduce la entidad al modelo `Product`.
 
-## Organización de este repositorio
+La relación de cada producto con su catálogo es, por ahora, solo el `catalogId`:
+la integridad la pone la clave ajena, no el código. El precio y el stock son números
+«sueltos»; las invariantes llegarán como value objects en hitos posteriores.
 
-Cada práctica se desarrolla en una **rama propia**, conectada al hito correspondiente de la asignatura:
+## Requisitos
 
-| Rama | Práctica |
-| --- | --- |
-| `main` | Portada de la asignatura (este README) |
-| `tienda` | Aplicación de la tienda |
-| `tienda/p1` | **P1 — Introducción: la tienda** (hito de partida: Spring Boot por capas, JDBC + MariaDB) |
+- **JDK 25** (compilación y ejecución). El proyecto fija `<java.version>25</java.version>`.
+- **Docker + Compose** para la base de datos MariaDB.
+- Maven **no hace falta instalarlo**: el proyecto incluye el **Maven Wrapper**
+  (`mvnw` / `mvnw.cmd`).
 
-A medida que avance el curso se irán añadiendo ramas para los sucesivos hitos (`p2`… `p9`), siempre partiendo del código de la práctica anterior.
+> **Nota sobre el puerto 3306:** el enunciado fija MariaDB en el puerto local `3306`,
+> pero en este equipo el servicio Windows `MySQL80` ya ocupa ese puerto. Por eso el
+> `compose.yaml` mapea el contenedor en el **`3307`** (`3307:3306`) y la URL de
+> conexión usa `localhost:3307`. Si un día ese MySQL se detiene, basta con cambiar
+> `3307:3306` por `3306:3306` en `compose.yaml` y restaurar el `3306` en
+> `application.properties`.
 
-## Referencias
+## Arranque
 
-- Apuntes y prácticas de la asignatura: <https://cesguiro.es/doku.php/clase/daw/dws/start>
+1. Levantar la base de datos (crea las tablas y carga la semilla automáticamente):
+
+   ```bash
+   docker compose up -d
+   ```
+
+   Se crea la base `shop` con el usuario `shop` / contraseña `shop` (contraseñas de
+   entorno de pruebas definidas por el enunciado, no secretos personales).
+   La semilla (`db/init.sql`) deja **3 catálogos y 28 productos**.
+
+2. Arrancar la aplicación:
+
+   ```bash
+   ./mvnw spring-boot:run        # Linux/macOS
+   .\mvnw.cmd spring-boot:run    # Windows
+   ```
+
+3. Comprobar el endpoint:
+
+   ```bash
+   curl http://localhost:8080/api/products
+   ```
+
+   Devuelve el JSON de los 28 productos con su `id`, `catalogId`, `name`,
+   `description`, `price` y `stock`.
+
+## Compilación y pruebas
+
+- Compilar: `./mvnw package` (o `.\mvnw.cmd package` en Windows).
+- Pruebas: en este hito las pruebas son **manuales** (curl contra el endpoint);
+  el primer criterio de pruebas automatizadas llega en el hito 05. Por eso no hay
+  tests automatizados todavía.
+
+## Comandos útiles
+
+```bash
+docker compose up -d     # levantar MariaDB
+docker compose down      # parar MariaDB
+docker compose down -v   # pararla y borrar el volumen de datos (vuelve a sembrar)
+```
