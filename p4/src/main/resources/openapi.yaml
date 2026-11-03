@@ -1,0 +1,420 @@
+# La tienda - contrato OpenAPI del módulo de catálogo (hito P4, versión 0.1.0)
+#
+# Fuente de verdad de la API: se diseña y se revisa antes de implementar el código.
+# De aquí genera openapi-generator el esqueleto (interfaces y esquemas) con `mvn compile`.
+# Cualquier cambio de la API se escribe primero en este documento: las clases generadas
+# nunca se editan a mano.
+
+openapi: 3.0.3
+
+info:
+  title: La tienda - módulo de catálogo
+  description: |
+    API del módulo de catálogo de la tienda: catálogos y productos.
+
+    Cualquier error de estado se responde como un documento `Problem` (RFC 9457):
+    `type`, `title`, `status` y `detail`.
+
+    Este hito todavía no declara constraints de validación: describen las
+    operaciones y sus errores de estado, no el formato de los datos.
+  version: 0.1.0
+
+tags:
+  - name: Catalogs
+    description: Catálogos de la tienda y sus productos paginados
+  - name: Products
+    description: Ficha, alta, modificación y borrado de productos
+
+paths:
+
+  /api/catalogs:
+    get:
+      tags:
+        - Catalogs
+      operationId: getCatalogs
+      summary: Listado de catálogos
+      description: Devuelve todos los catálogos de la tienda ordenados por identificador.
+      responses:
+        '200':
+          description: Listado completo de catálogos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Catalog'
+    post:
+      tags:
+        - Catalogs
+      operationId: createCatalog
+      summary: Alta de catálogo
+      description: >-
+        Crea un catálogo nuevo. Falla si ya existe otro catálogo con el mismo nombre.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogRequest'
+      responses:
+        '201':
+          description: Catálogo creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Catalog'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/catalogs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/CatalogId'
+    get:
+      tags:
+        - Catalogs
+      operationId: getCatalog
+      summary: Ficha de catálogo
+      responses:
+        '200':
+          description: Catálogo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Catalog'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+        - Catalogs
+      operationId: updateCatalog
+      summary: Modificación de catálogo
+      description: >-
+        Modifica un catálogo existente. Falla si el nombre del catálogo ya lo usa
+        otro catálogo distinto.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CatalogRequest'
+      responses:
+        '200':
+          description: Catálogo modificado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Catalog'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+        - Catalogs
+      operationId: deleteCatalog
+      summary: Borrado de catálogo
+      description: >-
+        Borra un catálogo. Falla si el catálogo todavía tiene productos;
+        en ese caso no se borra nada.
+      responses:
+        '204':
+          description: Catálogo borrado
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+  /api/catalogs/{id}/products:
+    parameters:
+      - $ref: '#/components/parameters/CatalogId'
+    get:
+      tags:
+        - Catalogs
+      operationId: getCatalogProducts
+      summary: Productos de un catálogo, paginados
+      description: >-
+        Sustituye al antiguo listado plano: devuelve los productos del catálogo
+        en páginas, siempre con sus metadatos.
+      parameters:
+        - name: page
+          in: query
+          description: Número de página, desde 0
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: size
+          in: query
+          description: Número de productos por página
+          schema:
+            type: integer
+            minimum: 1
+            default: 10
+      responses:
+        '200':
+          description: Página de productos del catálogo, con sus metadatos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProductPage'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/products:
+    post:
+      tags:
+        - Products
+      operationId: createProduct
+      summary: Alta de producto
+      description: >-
+        Crea un producto nuevo en el catálogo indicado por `catalogId`.
+        Falla si ese catálogo no existe.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductRequest'
+      responses:
+        '201':
+          description: Producto creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/products/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ProductId'
+    get:
+      tags:
+        - Products
+      operationId: getProduct
+      summary: Ficha de producto
+      responses:
+        '200':
+          description: Producto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+        - Products
+      operationId: updateProduct
+      summary: Modificación de producto
+      description: >-
+        Modifica un producto existente. Falla si el producto no existe, o si
+        el `catalogId` de los datos apunta a un catálogo que no existe.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProductRequest'
+      responses:
+        '200':
+          description: Producto modificado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Products
+      operationId: deleteProduct
+      summary: Borrado de producto
+      responses:
+        '204':
+          description: Producto borrado
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+
+  parameters:
+
+    CatalogId:
+      name: id
+      in: path
+      required: true
+      description: Identificador del catálogo
+      schema:
+        type: integer
+        format: int64
+
+    ProductId:
+      name: id
+      in: path
+      required: true
+      description: Identificador del producto
+      schema:
+        type: integer
+        format: int64
+
+  responses:
+
+    NotFound:
+      description: El catálogo o el producto no existen
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+    Conflict:
+      description: Estado incompatible con la operación (nombre de catálogo repetido o catálogo con productos)
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+
+  schemas:
+
+    Catalog:
+      type: object
+      description: Un catálogo de la tienda
+      required:
+        - id
+        - name
+        - description
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Identificador del catálogo
+        name:
+          type: string
+          description: Nombre del catálogo, único entre los catálogos
+        description:
+          type: string
+          description: Descripción breve del catálogo
+
+    CatalogRequest:
+      type: object
+      description: Datos de un catálogo para su alta o modificación (sin `id`)
+      required:
+        - name
+        - description
+      properties:
+        name:
+          type: string
+          description: Nombre del catálogo, único entre los catálogos
+        description:
+          type: string
+          description: Descripción breve del catálogo
+
+    Product:
+      type: object
+      description: Un producto de la tienda, con su catálogo
+      required:
+        - id
+        - catalogId
+        - name
+        - description
+        - price
+        - stock
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Identificador del producto
+        catalogId:
+          type: integer
+          format: int64
+          description: Identificador del catálogo al que pertenece
+        name:
+          type: string
+          description: Nombre del producto
+        description:
+          type: string
+          description: Descripción breve del producto
+        price:
+          type: number
+          description: Precio del producto
+        stock:
+          type: integer
+          description: Unidades en stock
+
+    ProductRequest:
+      type: object
+      description: Datos de un producto para su alta o modificación (sin `id`, con `catalogId`)
+      required:
+        - catalogId
+        - name
+        - description
+        - price
+        - stock
+      properties:
+        catalogId:
+          type: integer
+          format: int64
+          description: Identificador del catálogo al que pertenece
+        name:
+          type: string
+          description: Nombre del producto
+        description:
+          type: string
+          description: Descripción breve del producto
+        price:
+          type: number
+          description: Precio del producto
+        stock:
+          type: integer
+          description: Unidades en stock
+
+    ProductPage:
+      type: object
+      description: Una página del listado de productos de un catálogo, con sus metadatos
+      required:
+        - content
+        - page
+        - size
+        - totalElements
+        - totalPages
+      properties:
+        content:
+          type: array
+          description: Productos de esta página
+          items:
+            $ref: '#/components/schemas/Product'
+        page:
+          type: integer
+          description: Número de página, desde 0
+        size:
+          type: integer
+          description: Número de productos por página
+        totalElements:
+          type: integer
+          format: int64
+          description: Número total de productos del catálogo
+        totalPages:
+          type: integer
+          description: Número total de páginas con el tamaño de página actual
+
+    Problem:
+      type: object
+      description: Documento de problema (RFC 9457) para las respuestas de error
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          description: URI que identifica el tipo de problema
+        title:
+          type: string
+          description: Resumen del tipo de problema
+        status:
+          type: integer
+          description: Código de estado HTTP de la respuesta
+        detail:
+          type: string
+          description: Explicación específica de esta ocurrencia del problema
