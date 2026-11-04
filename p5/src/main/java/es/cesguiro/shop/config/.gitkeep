@@ -1,0 +1,3 @@
+# Carpeta reservada (se queda vacía por ahora): la configuración del proyecto
+# (beans comunes, propiedades de infraestructura...) llegará cuando la necesite
+# un hito. La carpeta debe existir en el repositorio.

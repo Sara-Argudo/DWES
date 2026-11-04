@@ -1,0 +1,12 @@
+services:
+  db:
+    image: mariadb:12
+    environment:
+      MARIADB_DATABASE: shop
+      MARIADB_USER: shop
+      MARIADB_PASSWORD: shop
+      MARIADB_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
+    # Sin script de inicialización: la estructura y la semilla de la base de
+    # datos las ejecuta Flyway al arrancar la aplicación (db/migration).
